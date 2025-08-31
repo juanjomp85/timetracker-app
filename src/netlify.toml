@@ -6,7 +6,7 @@
   command = "npm run build"
   
   # Directorio donde se generan los archivos estáticos
-  publish = "dist"
+  publish = "build"
 
 [build.environment]
   # Variables de entorno para el build
