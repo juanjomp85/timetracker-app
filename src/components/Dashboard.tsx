@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { Clock, Calendar, Timer, TrendingUp } from 'lucide-react';
 import { apiCall } from '../utils/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
+import { useRefresh } from '../contexts/RefreshContext';
 
 interface TimeEntry {
   id: string;
@@ -18,11 +19,15 @@ interface TimeEntry {
 
 export function Dashboard() {
   const { user } = useAuth();
+  const { triggerHistoryRefresh } = useRefresh();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [todayEntry, setTodayEntry] = useState<TimeEntry | null>(null);
   const [weeklyHours, setWeeklyHours] = useState(0);
   const [monthlyHours, setMonthlyHours] = useState(0);
+  const [weeklyChange, setWeeklyChange] = useState(0);
+  const [weeklyCompletion, setWeeklyCompletion] = useState(0);
+  const [monthlyCompletion, setMonthlyCompletion] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -57,6 +62,9 @@ export function Dashboard() {
       if (response.success) {
         setWeeklyHours(response.analytics.weeklyHours);
         setMonthlyHours(response.analytics.monthlyHours);
+        setWeeklyChange(response.analytics.weeklyChange);
+        setWeeklyCompletion(response.analytics.weeklyCompletion);
+        setMonthlyCompletion(response.analytics.monthlyCompletion);
       }
     } catch (error) {
       console.error('Error loading analytics:', error);
@@ -77,6 +85,7 @@ export function Dashboard() {
         setTodayEntry(response.entry);
         setIsCheckedIn(true);
         await loadAnalytics(); // Refresh stats
+        triggerHistoryRefresh(); // Refresh history
       } else {
         console.error('Check-in failed:', response.error);
       }
@@ -101,6 +110,7 @@ export function Dashboard() {
         setTodayEntry(response.entry);
         setIsCheckedIn(false);
         await loadAnalytics(); // Refresh stats
+        triggerHistoryRefresh(); // Refresh history
       } else {
         console.error('Check-out failed:', response.error);
       }
@@ -238,7 +248,9 @@ export function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{weeklyHours}h</div>
             <p className="text-xs text-muted-foreground">
-              +2.5h desde la semana pasada
+              {weeklyChange >= 0 ? '+' : ''}{weeklyChange}h desde la semana pasada
+              <br />
+              Meta: 40h ({weeklyCompletion}% completado)
             </p>
           </CardContent>
         </Card>
@@ -251,7 +263,7 @@ export function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{monthlyHours}h</div>
             <p className="text-xs text-muted-foreground">
-              Meta: 160h (91% completado)
+              Meta: 160h ({monthlyCompletion}% completado)
             </p>
           </CardContent>
         </Card>

@@ -2,17 +2,19 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Calendar as CalendarComponent } from './ui/calendar';
+// Removed CalendarComponent import - using custom calendar
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
   ChevronRight,
   Clock,
   Target,
-  TrendingUp,
-  Filter
+  TrendingUp
 } from 'lucide-react';
 import { apiCall } from '../utils/supabase/client';
+import { useRefresh } from '../contexts/RefreshContext';
+import { useAuth } from '../contexts/AuthContext';
+import { toLocalDateString } from '../utils/dateUtils';
 
 interface CalendarEntry {
   date: string;
@@ -31,6 +33,8 @@ interface CalendarStats {
 }
 
 export function Calendar() {
+  const { user } = useAuth();
+  const { refreshHistory } = useRefresh();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
@@ -45,22 +49,33 @@ export function Calendar() {
   });
 
   useEffect(() => {
-    loadCalendarData();
-  }, [currentMonth]);
+    if (user) {
+      loadCalendarData();
+    }
+  }, [currentMonth, user]);
+
+  // Reload calendar data when refreshHistory changes
+  useEffect(() => {
+    if (refreshHistory > 0 && user) {
+      loadCalendarData();
+    }
+  }, [refreshHistory]);
 
   useEffect(() => {
-    const entry = entries.find(e => e.date === selectedDate.toISOString().split('T')[0]);
+    const entry = entries.find(e => e.date === toLocalDateString(selectedDate));
     setSelectedEntry(entry || null);
   }, [selectedDate, entries]);
 
   const loadCalendarData = async () => {
+    if (!user) return;
+    
     try {
       setLoading(true);
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
       
       const response = await apiCall(
-        `/time-entries/calendar?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+        `/time-entries/calendar?userId=${user.id}&start=${startDate.toISOString()}&end=${endDate.toISOString()}`
       );
       
       if (response.success) {
@@ -89,18 +104,6 @@ export function Calendar() {
     });
   };
 
-  const getDateStatus = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    const entry = entries.find(e => e.date === dateStr);
-    return entry?.status || 'absent';
-  };
-
-  const getDateHours = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    const entry = entries.find(e => e.date === dateStr);
-    return entry?.totalHours || 0;
-  };
-
   const formatTime = (timeString: string) => {
     return new Date(timeString).toLocaleTimeString('es-ES', { 
       hour: '2-digit', 
@@ -127,14 +130,6 @@ export function Calendar() {
     setCurrentMonth(newMonth);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-500';
-      case 'incomplete': return 'bg-yellow-500';
-      case 'absent': return 'bg-gray-300';
-      default: return 'bg-gray-300';
-    }
-  };
 
   const getStatusText = (status: string) => {
     switch (status) {
@@ -149,6 +144,102 @@ export function Calendar() {
     month: 'long', 
     year: 'numeric' 
   });
+
+  // Custom calendar functions
+  const getDaysInMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date: Date) => {
+    const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+    return firstDay.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  };
+
+  const getLastDayOfPreviousMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 0).getDate();
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  };
+
+  const isSelected = (date: Date) => {
+    return selectedDate.getDate() === date.getDate() &&
+           selectedDate.getMonth() === date.getMonth() &&
+           selectedDate.getFullYear() === date.getFullYear();
+  };
+
+  const getDateStatus = (date: Date) => {
+    const dateStr = toLocalDateString(date);
+    const entry = entries.find(e => e.date === dateStr);
+    return entry?.status || 'absent';
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800 border-green-200';
+      case 'incomplete': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'absent': return 'bg-gray-50 text-gray-600 border-gray-200';
+      default: return 'bg-gray-50 text-gray-600 border-gray-200';
+    }
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = getDaysInMonth(currentMonth);
+    const firstDay = getFirstDayOfMonth(currentMonth);
+    const lastDayOfPrevMonth = getLastDayOfPreviousMonth(currentMonth);
+    
+    const days = [];
+    
+    // Add days from previous month
+    for (let i = firstDay - 1; i >= 0; i--) {
+      const day = lastDayOfPrevMonth - i;
+      days.push(
+        <div key={`prev-${day}`} className="h-12 flex items-center justify-center text-gray-400 text-sm">
+          {day}
+        </div>
+      );
+    }
+    
+    // Add days from current month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+      const status = getDateStatus(date);
+      const isCurrentDay = isToday(date);
+      const isSelectedDay = isSelected(date);
+      
+      days.push(
+        <button
+          key={day}
+          onClick={() => setSelectedDate(date)}
+          className={`
+            h-12 w-full flex items-center justify-center text-sm font-medium rounded-lg border-2 transition-all duration-200 hover:scale-105
+            ${isCurrentDay ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+            ${isSelectedDay ? 'ring-2 ring-primary ring-offset-2' : ''}
+            ${getStatusColor(status)}
+          `}
+        >
+          {day}
+        </button>
+      );
+    }
+    
+    // Add days from next month to fill the grid
+    const totalCells = 42; // 6 rows × 7 days
+    const remainingCells = totalCells - days.length;
+    for (let day = 1; day <= remainingCells; day++) {
+      days.push(
+        <div key={`next-${day}`} className="h-12 flex items-center justify-center text-gray-400 text-sm">
+          {day}
+        </div>
+      );
+    }
+    
+    return days;
+  };
 
   return (
     <div className="space-y-6">
@@ -239,43 +330,58 @@ export function Calendar() {
             {loading ? (
               <div className="animate-pulse space-y-4">
                 <div className="grid grid-cols-7 gap-2">
-                  {Array.from({ length: 35 }).map((_, i) => (
+                  {Array.from({ length: 42 }).map((_, i) => (
                     <div key={i} className="h-12 bg-muted rounded"></div>
                   ))}
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
-                <CalendarComponent
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => date && setSelectedDate(date)}
-                  month={currentMonth}
-                  onMonthChange={setCurrentMonth}
-                  modifiers={{
-                    completed: (date) => getDateStatus(date) === 'completed',
-                    incomplete: (date) => getDateStatus(date) === 'incomplete',
-                    absent: (date) => getDateStatus(date) === 'absent'
-                  }}
-                  modifiersClassNames={{
-                    completed: 'bg-green-100 text-green-800 hover:bg-green-200',
-                    incomplete: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200',
-                    absent: 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                  }}
-                />
+                {/* Calendar Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => navigateMonth('prev')}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <h3 className="text-lg font-semibold">{currentMonthName}</h3>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => navigateMonth('next')}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Days of week header */}
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((day) => (
+                    <div key={day} className="h-8 flex items-center justify-center text-sm font-medium text-muted-foreground">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Calendar Grid */}
+                <div className="grid grid-cols-7 gap-2">
+                  {renderCalendar()}
+                </div>
                 
                 {/* Legend */}
                 <div className="flex flex-wrap gap-4 pt-4 border-t">
                   <div className="flex items-center gap-2 text-sm">
-                    <div className="w-3 h-3 rounded bg-green-500"></div>
+                    <div className="w-3 h-3 rounded bg-green-100 border border-green-200"></div>
                     <span>Completado</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <div className="w-3 h-3 rounded bg-yellow-500"></div>
+                    <div className="w-3 h-3 rounded bg-yellow-100 border border-yellow-200"></div>
                     <span>Incompleto</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <div className="w-3 h-3 rounded bg-gray-300"></div>
+                    <div className="w-3 h-3 rounded bg-gray-50 border border-gray-200"></div>
                     <span>Sin registro</span>
                   </div>
                 </div>

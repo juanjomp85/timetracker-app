@@ -9,6 +9,7 @@ import { Settings } from './components/Settings';
 import { Auth } from './components/Auth';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { RefreshProvider } from './contexts/RefreshContext';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -65,7 +66,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <RefreshProvider>
+        <AppContent />
+      </RefreshProvider>
     </AuthProvider>
   );
 }

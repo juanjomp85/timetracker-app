@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Calendar, Clock, Timer } from 'lucide-react';
 import { apiCall } from '../utils/supabase/client';
+import { useRefresh } from '../contexts/RefreshContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface TimeEntry {
   id: string;
@@ -15,6 +17,8 @@ interface TimeEntry {
 }
 
 export function TimeHistory() {
+  const { user } = useAuth();
+  const { refreshHistory } = useRefresh();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [weeklyStats, setWeeklyStats] = useState({
@@ -25,13 +29,25 @@ export function TimeHistory() {
   });
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (user) {
+      loadHistory();
+    }
+  }, [user]);
+
+  // Reload history when refreshHistory changes
+  useEffect(() => {
+    if (refreshHistory > 0 && user) {
+      loadHistory();
+    }
+  }, [refreshHistory]);
 
   const loadHistory = async () => {
+    if (!user) return;
+    
     try {
       setLoading(true);
-      const response = await apiCall('/time-entries/history');
+      const response = await apiCall(`/time-entries/history?userId=${user.id}`);
+      
       if (response.success) {
         setEntries(response.entries || []);
         calculateWeeklyStats(response.entries || []);

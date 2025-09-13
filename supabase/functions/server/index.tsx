@@ -2,7 +2,7 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import * as kv from "./kv_store.ts";
+import * as kv from "./kv_store.tsx";
 
 // Initialize Supabase clients
 const supabaseAdmin = createClient(
@@ -42,11 +42,13 @@ app.post("/make-server-f2f8e889/time-entries", async (c) => {
     const body = await c.req.json();
     const { action, userId = "default" } = body;
     
-    const today = new Date().toISOString().split('T')[0];
+    // Get current date in local timezone (Madrid timezone)
+    const now = new Date();
+    const today = now.toLocaleDateString('en-CA'); // Format: YYYY-MM-DD
     const entryKey = `time_entry_${userId}_${today}`;
     
     if (action === "check_in") {
-      const checkInTime = new Date().toISOString();
+      const checkInTime = now.toISOString();
       const entry = {
         id: `${userId}_${today}`,
         userId,
@@ -64,7 +66,7 @@ app.post("/make-server-f2f8e889/time-entries", async (c) => {
         return c.json({ success: false, error: "No check-in found for today" }, 400);
       }
       
-      const checkOutTime = new Date().toISOString();
+      const checkOutTime = now.toISOString();
       const checkInDate = new Date(existingEntry.checkIn);
       const checkOutDate = new Date(checkOutTime);
       const totalHours = (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60);
@@ -91,7 +93,7 @@ app.post("/make-server-f2f8e889/time-entries", async (c) => {
 app.get("/make-server-f2f8e889/time-entries/today", async (c) => {
   try {
     const userId = c.req.query("userId") || "default";
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA'); // Format: YYYY-MM-DD
     const entryKey = `time_entry_${userId}_${today}`;
     
     const entry = await kv.get(entryKey);
@@ -310,15 +312,39 @@ app.get("/make-server-f2f8e889/time-entries/calendar", async (c) => {
       });
     }
     
-    // Transform entries for calendar view
-    const calendarEntries = filteredEntries.map(entry => ({
-      date: entry.date,
-      checkIn: entry.checkIn,
-      checkOut: entry.checkOut,
-      totalHours: entry.totalHours,
-      status: entry.status === 'completed' ? 'completed' : 
-              entry.status === 'checked_in' ? 'incomplete' : 'absent'
-    }));
+    // Transform entries for calendar view with better status logic
+    const calendarEntries = filteredEntries.map(entry => {
+      let status = 'absent';
+      
+      // Check if entry has both check-in and check-out
+      if (entry.checkIn && entry.checkOut) {
+        // Calculate total hours worked
+        const checkInTime = new Date(entry.checkIn);
+        const checkOutTime = new Date(entry.checkOut);
+        const hoursWorked = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+        
+        // Consider a day "completed" if worked 8+ hours, otherwise "incomplete"
+        if (hoursWorked >= 8) {
+          status = 'completed';
+        } else {
+          status = 'incomplete';
+        }
+      } else if (entry.checkIn && !entry.checkOut) {
+        // Only check-in, no check-out
+        status = 'incomplete';
+      } else {
+        // No check-in or check-out
+        status = 'absent';
+      }
+      
+      return {
+        date: entry.date,
+        checkIn: entry.checkIn,
+        checkOut: entry.checkOut,
+        totalHours: entry.totalHours || 0,
+        status: status
+      };
+    });
     
     return c.json({ success: true, entries: calendarEntries });
   } catch (error) {

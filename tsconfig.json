@@ -23,18 +23,14 @@
     /* Path mapping */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"],
-      "@/components/*": ["./components/*"],
-      "@/utils/*": ["./utils/*"],
-      "@/styles/*": ["./styles/*"]
+      "@/*": ["./src/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/utils/*": ["./src/utils/*"],
+      "@/styles/*": ["./src/styles/*"]
     }
   },
   "include": [
-    "src",
-    "App.tsx",
-    "components/**/*",
-    "utils/**/*",
-    "styles/**/*",
+    "src/**/*",
     "vite.config.ts"
   ],
   "exclude": [
